@@ -1,13 +1,15 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Ident, ImplItem, Item, ItemImpl, ItemTrait, TraitItem};
+use syn::{
+    parse_macro_input, spanned::Spanned, Ident, ImplItem, Item, ItemImpl, ItemTrait, TraitItem,
+};
 
 #[proc_macro_attribute]
 pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     // Parse the input into a syntax tree
     let ast = parse_macro_input!(input as syn::Item);
 
-    // Check if the input is a trait or an impl block
+    // Check if the input is a function, trait def or an impl block
     let (enum_name, functions) = match ast {
         Item::Trait(trait_def) => {
             // For a trait, use the trait name as the enum name
@@ -16,14 +18,25 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
             (enum_name, functions)
         }
         Item::Impl(impl_block) => {
-            // For an implementation, use the struct name as the enum name
+            // For an implementation, use the type name as the enum name
             let ident = match &*impl_block.self_ty {
                 syn::Type::Path(tp) => tp.path.segments.first().unwrap().ident.clone(),
                 _ => panic!("not supported tokens"),
             };
             let enum_name = Ident::new(&(ident.to_string() + "ImplEnum"), ident.span());
-            // let enum_name = Ident::new("Unknown", impl_block.span());
+            // If it's an impl trait, then abort.
+            if impl_block.trait_.is_some() {
+                panic!("Use this macro on the trait definition, not the implementation.")
+            };
+
             let functions = extract_impl_functions(&impl_block);
+            (enum_name, functions)
+        }
+        Item::Fn(function) => {
+            // For bare function, use it's own name as the enum name
+            let capital_name = capitalize(function.sig.ident.to_string());
+            let enum_name = Ident::new(&capital_name, function.sig.span());
+            let functions = vec![function.sig.ident];
             (enum_name, functions)
         }
         _ => panic!("This macro can only be used on traits or implementations."),
@@ -31,15 +44,7 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
 
     // Generate the enum variants
     let variants = functions.iter().map(|i| {
-        let name = i.to_string();
-        let capital_name = i
-            .to_string()
-            .chars()
-            .next()
-            .unwrap_or_default()
-            .to_uppercase()
-            .collect::<String>()
-            + &name[1..];
+        let capital_name = capitalize(i.to_string());
         Ident::new(&capital_name, i.span())
     });
 
@@ -71,4 +76,14 @@ fn extract_impl_functions(impl_block: &ItemImpl) -> Vec<Ident> {
             _ => None,
         })
         .collect()
+}
+
+fn capitalize(name: impl Into<String>) -> String {
+    let name: String = name.into();
+    name.chars()
+        .next()
+        .unwrap_or_default()
+        .to_uppercase()
+        .collect::<String>()
+        + &name[1..]
 }
