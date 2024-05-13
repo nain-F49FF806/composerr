@@ -1,9 +1,17 @@
-use composerr::generate_enum_from_trait;
+use composerr::generate_enum;
 
-#[generate_enum_from_trait]
+#[generate_enum]
 trait MyTrait {
     fn function1(&self);
     fn function2(&self);
+}
+
+struct Dummy;
+
+#[generate_enum]
+impl Dummy {
+    fn function3(&self) {}
+    fn function4(&self) {}
 }
 
 fn main() {
