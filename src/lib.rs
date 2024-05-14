@@ -1,7 +1,8 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, spanned::Spanned, Ident, ImplItem, Item, ItemImpl, ItemTrait, TraitItem,
+    parse_macro_input, spanned::Spanned, Ident, ImplItem, Item, ItemFn, ItemImpl, ItemTrait,
+    TraitItem,
 };
 
 #[proc_macro_attribute]
@@ -36,7 +37,7 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
             // For bare function, use it's own name as the enum name
             let capital_name = capitalize(function.sig.ident.to_string());
             let enum_name = Ident::new(&capital_name, function.sig.span());
-            let functions = vec![function.sig.ident];
+            let functions = extract_bare_function(&function);
             (enum_name, functions)
         }
         _ => panic!("This macro can only be used on traits or implementations."),
@@ -60,10 +61,18 @@ fn extract_trait_functions(trait_def: &ItemTrait) -> Vec<Ident> {
     trait_def
         .items
         .iter()
+        // We want only function items
         .filter_map(|item| match item {
-            TraitItem::Fn(item) => Some(item.sig.ident.clone()),
+            TraitItem::Fn(item) => Some(item),
             _ => None,
         })
+        // and only those functions with #[select] attribute
+        .filter(|item| {
+            item.attrs
+                .iter()
+                .any(|attr| attr.path().segments.first().unwrap().ident == "select")
+        })
+        .map(|item| item.sig.ident.clone())
         .collect()
 }
 
@@ -71,11 +80,31 @@ fn extract_impl_functions(impl_block: &ItemImpl) -> Vec<Ident> {
     impl_block
         .items
         .iter()
+        // We want only function items
         .filter_map(|item| match item {
-            ImplItem::Fn(item) => Some(item.sig.ident.clone()),
+            ImplItem::Fn(item) => Some(item),
             _ => None,
         })
+        // and only those functions with #[select] attribute
+        .filter(|item| {
+            item.attrs
+                .iter()
+                .any(|attr| attr.path().segments.first().unwrap().ident == "select")
+        })
+        .map(|item| item.sig.ident.clone())
         .collect()
+}
+
+fn extract_bare_function(function: &ItemFn) -> Vec<Ident> {
+    if function
+        .attrs
+        .iter()
+        .any(|attr| attr.path().segments.first().unwrap().ident == "select")
+    {
+        vec![function.sig.ident.clone()]
+    } else {
+        vec![]
+    }
 }
 
 fn capitalize(name: impl Into<String>) -> String {
