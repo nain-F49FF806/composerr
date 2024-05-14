@@ -21,7 +21,7 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         Item::Impl(impl_block) => {
             // For an implementation, use the type name as the enum name
             let ident = match &*impl_block.self_ty {
-                syn::Type::Path(tp) => tp.path.segments.first().unwrap().ident.clone(),
+                syn::Type::Path(tp) => tp.path.segments.last().unwrap().ident.clone(),
                 _ => panic!("not supported tokens"),
             };
             let enum_name = Ident::new(&(ident.to_string() + "ImplEnum"), ident.span());
@@ -70,7 +70,7 @@ fn extract_trait_functions(trait_def: &ItemTrait) -> Vec<Ident> {
         .filter(|item| {
             item.attrs
                 .iter()
-                .any(|attr| attr.path().segments.first().unwrap().ident == "select")
+                .any(|attr| attr.path().segments.last().unwrap().ident == "select")
         })
         .map(|item| item.sig.ident.clone())
         .collect()
@@ -89,7 +89,7 @@ fn extract_impl_functions(impl_block: &ItemImpl) -> Vec<Ident> {
         .filter(|item| {
             item.attrs
                 .iter()
-                .any(|attr| attr.path().segments.first().unwrap().ident == "select")
+                .any(|attr| attr.path().segments.last().unwrap().ident == "select")
         })
         .map(|item| item.sig.ident.clone())
         .collect()
@@ -99,7 +99,7 @@ fn extract_bare_function(function: &ItemFn) -> Vec<Ident> {
     if function
         .attrs
         .iter()
-        .any(|attr| attr.path().segments.first().unwrap().ident == "select")
+        .any(|attr| attr.path().segments.last().unwrap().ident == "select")
     {
         vec![function.sig.ident.clone()]
     } else {

@@ -26,6 +26,17 @@ impl Display for Dummy {
     }
 }
 
+mod foo {
+    pub struct Dummy2;
+}
+
+#[generate_enum]
+impl foo::Dummy2 {
+    fn function6(&self) {}
+    #[select]
+    fn function7(&self) {}
+}
+
 #[generate_enum]
 #[select]
 fn main() {
