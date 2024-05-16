@@ -1,13 +1,14 @@
 use std::fmt::Display;
+use std::io::Error;
 
 use composerr::generate_enum;
 
 #[generate_enum]
 trait MyTrait {
-    #[select]
+    #[errorset{Error, Display}]
     fn function1(&self);
     fn function2(&self);
-    #[select]
+    #[errorset[]]
     fn function3(&self);
 }
 
@@ -16,7 +17,7 @@ struct Dummy;
 #[generate_enum]
 impl Dummy {
     fn function4(&self) {}
-    #[select]
+    #[errorset{}]
     fn function5(&self) {}
 }
 
@@ -33,12 +34,12 @@ mod foo {
 #[generate_enum]
 impl foo::Dummy2 {
     fn function6(&self) {}
-    #[select]
+    #[errorset()]
     fn function7(&self) {}
 }
 
 #[generate_enum]
-#[select]
+#[errorset()]
 fn main() {
     // This is just a placeholder to compile the program.
     // The real test is in the generated enum.

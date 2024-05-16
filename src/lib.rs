@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, spanned::Spanned, Ident, ImplItem, Item, ItemFn, ItemImpl, ItemTrait,
-    TraitItem,
+    parse_macro_input, spanned::Spanned, Attribute, Ident, ImplItem, Item, ItemFn, ItemImpl,
+    ItemTrait, TraitItem,
 };
 
 #[proc_macro_attribute]
@@ -50,8 +50,11 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     // Generate the enum variants
-    let variants = functions.iter().map(|i| {
-        let capital_name = capitalize(i.to_string());
+    let variants = functions.iter().map(|(i, _error_set)| {
+        let error_names = _error_set.iter().map(|i| i.to_string()).collect::<String>();
+        let capital_name = capitalize(i.to_string() + &error_names);
+
+        // let capital_name = capitalize(i.to_string());
         Ident::new(&capital_name, i.span())
     });
 
@@ -64,7 +67,23 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     })
 }
 
-fn extract_trait_functions(trait_def: &ItemTrait) -> Vec<Ident> {
+fn extract_errorset_list(attr: &Attribute) -> Vec<Ident> {
+    let mut idents = Vec::new();
+    attr.parse_nested_meta(|meta| {
+        let ident = meta
+            .path
+            .get_ident()
+            .expect("Each item must be an ident, not long path");
+        idents.push(ident.clone());
+        Ok(())
+    })
+    .expect("Failed parsing args for errorset helper attribute");
+    idents
+}
+
+type FuncErrors = (Ident, Vec<Ident>);
+
+fn extract_trait_functions(trait_def: &ItemTrait) -> Vec<FuncErrors> {
     trait_def
         .items
         .iter()
@@ -77,9 +96,18 @@ fn extract_trait_functions(trait_def: &ItemTrait) -> Vec<Ident> {
         .filter(|item| {
             item.attrs
                 .iter()
-                .any(|attr| attr.path().segments.last().unwrap().ident == "select")
+                .any(|attr| attr.path().get_ident().unwrap() == "errorset")
         })
-        .map(|item| item.sig.ident.clone())
+        .map(|item| {
+            let func_name = item.sig.ident.clone();
+            let errorset_attr = item
+                .attrs
+                .iter()
+                .find(|attr| attr.path().is_ident("errorset"))
+                .unwrap();
+            let err_set: Vec<Ident> = extract_errorset_list(errorset_attr);
+            (func_name, err_set)
+        })
         .collect()
 }
 
@@ -93,7 +121,7 @@ fn strip_trait_functions_attrs(trait_def: &mut ItemTrait) {
                 let mut item_fn = item_fn.clone();
                 item_fn
                     .attrs
-                    .retain(|attr| attr.path().segments.last().unwrap().ident != "select");
+                    .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
                 TraitItem::Fn(item_fn)
             }
             _ => item.clone(),
@@ -112,7 +140,7 @@ fn strip_impl_functions_attrs(impl_block: &mut ItemImpl) {
                 let mut item_fn = item_fn.clone();
                 item_fn
                     .attrs
-                    .retain(|attr| attr.path().segments.last().unwrap().ident != "select");
+                    .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
                 ImplItem::Fn(item_fn)
             }
             _ => item.clone(),
@@ -125,10 +153,10 @@ fn strip_impl_functions_attrs(impl_block: &mut ItemImpl) {
 fn strip_bare_function_attrs(function: &mut ItemFn) {
     function
         .attrs
-        .retain(|attr| attr.path().segments.last().unwrap().ident != "select");
+        .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
 }
 
-fn extract_impl_functions(impl_block: &ItemImpl) -> Vec<Ident> {
+fn extract_impl_functions(impl_block: &ItemImpl) -> Vec<FuncErrors> {
     impl_block
         .items
         .iter()
@@ -141,19 +169,36 @@ fn extract_impl_functions(impl_block: &ItemImpl) -> Vec<Ident> {
         .filter(|item| {
             item.attrs
                 .iter()
-                .any(|attr| attr.path().segments.last().unwrap().ident == "select")
+                .any(|attr| attr.path().segments.last().unwrap().ident == "errorset")
         })
-        .map(|item| item.sig.ident.clone())
+        .map(|item| {
+            let func_name = item.sig.ident.clone();
+            let errorset_attr = item
+                .attrs
+                .iter()
+                .find(|attr| attr.path().is_ident("errorset"))
+                .unwrap();
+            let err_set: Vec<Ident> = extract_errorset_list(errorset_attr);
+            (func_name, err_set)
+        })
         .collect()
 }
 
-fn extract_bare_function(function: &ItemFn) -> Vec<Ident> {
+fn extract_bare_function(function: &ItemFn) -> Vec<FuncErrors> {
     if function
         .attrs
         .iter()
-        .any(|attr| attr.path().segments.last().unwrap().ident == "select")
+        .any(|attr| attr.path().segments.last().unwrap().ident == "errorset")
     {
-        vec![function.sig.ident.clone()]
+        let func_name = function.sig.ident.clone();
+        let errorset_attr = function
+            .attrs
+            .iter()
+            .find(|attr| attr.path().is_ident("errorset"))
+            .unwrap();
+        let err_set: Vec<Ident> = extract_errorset_list(errorset_attr);
+
+        vec![(func_name, err_set)]
     } else {
         vec![]
     }
