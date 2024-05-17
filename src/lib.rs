@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, spanned::Spanned, Attribute, Ident, ImplItem, Item, ItemFn, ItemImpl,
-    ItemTrait, TraitItem,
+    parse_macro_input, parse_quote, spanned::Spanned, Attribute, GenericArgument, Ident, ImplItem,
+    Item, ItemFn, ItemImpl, ItemTrait, PathArguments, ReturnType, TraitItem, Type,
 };
 
 #[proc_macro_attribute]
@@ -20,8 +20,7 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
 
     let mut enums = Vec::new();
     for (i, error_set) in &functions {
-        let enum_name = capitalize(i.to_string()) + "Error";
-        let enum_ident = Ident::new(&enum_name, i.span());
+        let enum_ident = name_composed_error(i);
 
         let derive_attr = quote!(#[derive(Error, Debug)]);
         let from_attr = quote!(#[from]);
@@ -96,7 +95,7 @@ fn process_impl_block(impl_block: &mut ItemImpl) -> ContextFuncs {
 }
 
 fn process_bare_function(function: &mut ItemFn) -> ContextFuncs {
-    // For bare function, use it's own name as the enum name
+    // For bare function, use it's own name as the scope name
     let capital_name = capitalize(function.sig.ident.to_string());
     let enum_name = Ident::new(&capital_name, function.sig.span());
     let functions = extract_bare_function(function);
@@ -113,7 +112,7 @@ fn extract_trait_functions(trait_def: &ItemTrait) -> Vec<FuncErrors> {
             TraitItem::Fn(item) => Some(item),
             _ => None,
         })
-        // and only those functions with #[select] attribute
+        // and only those functions with #[errorset] attribute
         .filter(|item| {
             item.attrs
                 .iter()
@@ -141,7 +140,7 @@ fn extract_impl_functions(impl_block: &ItemImpl) -> Vec<FuncErrors> {
             ImplItem::Fn(item) => Some(item),
             _ => None,
         })
-        // and only those functions with #[select] attribute
+        // and only those functions with #[errorset] attribute
         .filter(|item| {
             item.attrs
                 .iter()
@@ -194,7 +193,8 @@ fn extract_errorset_list(attr: &Attribute) -> Vec<Ident> {
     idents
 }
 
-// Mutates ItemTrait in place. Removing the #[select] helper attribute
+// Mutates ItemTrait in place. Removing the #[errorset] helper attribute
+// Also changes the return Result type, installing the custom composed error.
 fn strip_trait_functions_attrs(trait_def: &mut ItemTrait) {
     let cleaned_items = trait_def
         .items
@@ -202,6 +202,10 @@ fn strip_trait_functions_attrs(trait_def: &mut ItemTrait) {
         .map(|item| match item {
             TraitItem::Fn(item_fn) => {
                 let mut item_fn = item_fn.clone();
+                replace_func_output(
+                    &mut item_fn.sig.output,
+                    &name_composed_error(&item_fn.sig.ident),
+                );
                 item_fn
                     .attrs
                     .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
@@ -213,7 +217,8 @@ fn strip_trait_functions_attrs(trait_def: &mut ItemTrait) {
     trait_def.items = cleaned_items;
 }
 
-// Mutates ItemImpl in place. Removing the #[select] helper attribute
+// Mutates ItemImpl in place. Removing the #[errorset] helper attribute
+// Also changes the return Result type, installing the custom composed error.
 fn strip_impl_functions_attrs(impl_block: &mut ItemImpl) {
     let cleaned_items = impl_block
         .items
@@ -221,6 +226,10 @@ fn strip_impl_functions_attrs(impl_block: &mut ItemImpl) {
         .map(|item| match item {
             ImplItem::Fn(item_fn) => {
                 let mut item_fn = item_fn.clone();
+                replace_func_output(
+                    &mut item_fn.sig.output,
+                    &name_composed_error(&item_fn.sig.ident),
+                );
                 item_fn
                     .attrs
                     .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
@@ -232,11 +241,46 @@ fn strip_impl_functions_attrs(impl_block: &mut ItemImpl) {
     impl_block.items = cleaned_items;
 }
 
-// Mutates function in place. Removing the #[select] helper attribute
+// Mutates function in place. Removing the #[errorset] helper attribute
+// Also changes the return Result type, installing the custom composed error.
 fn strip_bare_function_attrs(function: &mut ItemFn) {
+    replace_func_output(
+        &mut function.sig.output,
+        &name_composed_error(&function.sig.ident),
+    );
     function
         .attrs
         .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
+}
+
+// This function takes a mutable reference to function ReturnType and attempts to modify it.
+// Replaces the error variant if it is a Result type.
+fn replace_func_output(return_type: &mut ReturnType, composed_error_ident: &Ident) {
+    // Replace the error type in the return type with CustomE
+    // This is a simplification; you'll need to adjust this based on how your types are structured
+    if let ReturnType::Type(_, return_type) = return_type {
+        if let Type::Path(type_path) = &mut **return_type {
+            let path = &mut type_path.path;
+            if path.segments.first().unwrap().ident == "Result" {
+                if let PathArguments::AngleBracketed(result_args) =
+                    &mut path.segments.first_mut().unwrap().arguments
+                {
+                    let args = &mut result_args.args;
+                    // Result <T, E>
+                    if args.len() == 2 {
+                        let composed_error_type: Type = parse_quote!(#composed_error_ident);
+                        args[1] = GenericArgument::Type(composed_error_type);
+                    }
+                }
+            }
+        }
+    }
+}
+
+//
+fn name_composed_error(function_ident: &Ident) -> Ident {
+    let name = capitalize(function_ident.to_string()) + "Error";
+    Ident::new(&name, function_ident.span())
 }
 
 fn capitalize(name: impl Into<String>) -> String {

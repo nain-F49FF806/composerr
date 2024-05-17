@@ -38,14 +38,16 @@ mod foo {
 #[generate_enum]
 impl foo::Dummy2 {
     fn function6(&self) {}
-    #[errorset()]
-    fn function7(&self) {}
+    #[errorset(IOError)]
+    fn function7(&self) -> Result<String, _> {
+        Ok("ok".to_owned())
+    }
 }
 
 #[test]
 #[generate_enum]
 #[errorset(IOError, BasedError)]
-fn main() {
+fn main() -> Result<(), ()> {
     // This is just a placeholder to compile the program.
     // The real test is in the generated enum.
 
@@ -56,4 +58,6 @@ fn main() {
 
     let err = MainError::BasedError(BasedError);
     let _ioerr: IOError = err.try_into().expect("This will fail");
+
+    Ok(())
 }
