@@ -11,21 +11,12 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     let mut ast = parse_macro_input!(input as syn::Item);
 
     // Check if the input is a function, trait def or an impl block
-    let (enum_name, functions) = match &mut ast {
+    let (_input_scope, functions) = match &mut ast {
         Item::Trait(trait_def) => process_trait_def(trait_def),
         Item::Impl(impl_block) => process_impl_block(impl_block),
         Item::Fn(function) => process_bare_function(function),
         _ => panic!("This macro can only be used on functions, traits or implementations."),
     };
-
-    // Generate the enum variants
-    let variants = functions.iter().map(|(i, _error_set)| {
-        let error_names = _error_set.iter().map(|i| i.to_string()).collect::<String>();
-        let capital_name = capitalize(i.to_string() + &error_names);
-
-        // let capital_name = capitalize(i.to_string());
-        Ident::new(&capital_name, i.span())
-    });
 
     let mut enums = Vec::new();
     for (i, error_set) in &functions {
