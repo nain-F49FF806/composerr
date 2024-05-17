@@ -44,6 +44,24 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
                     #error_set(#from_attr #error_set)
                 ),*
             }
+
+            #(
+                impl TryFrom<#enum_ident> for #error_set {
+                    type Error = String;
+                    fn try_from(value: #enum_ident) -> Result<Self, Self::Error> {
+                        match value {
+                            #enum_ident::#error_set(e) => Ok(e),
+                            _ => Err(
+                                    concat!(
+                                        "This instance of ", stringify!(#enum_ident),
+                                        " is of variant different than the requested ", stringify!(#error_set)
+                                    ).to_string()
+                                ),
+                        }
+                    }
+                }
+            )*
+
         });
     }
 

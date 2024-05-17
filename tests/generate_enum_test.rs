@@ -1,5 +1,5 @@
 use composerr::generate_enum;
-use std::fmt::Display;
+use std::fmt::{Display, Error};
 use std::io::Error as IOError;
 use thiserror::Error;
 
@@ -42,9 +42,18 @@ impl foo::Dummy2 {
     fn function7(&self) {}
 }
 
+#[test]
 #[generate_enum]
-#[errorset()]
+#[errorset(IOError, BasedError)]
 fn main() {
     // This is just a placeholder to compile the program.
     // The real test is in the generated enum.
+
+    let _err: MainError = BasedError.into();
+
+    let err = MainError::BasedError(BasedError);
+    let _based: BasedError = err.try_into().unwrap();
+
+    let err = MainError::BasedError(BasedError);
+    let _ioerr: IOError = err.try_into().expect("This will fail");
 }
