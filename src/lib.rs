@@ -51,9 +51,6 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(quote! {
         #(#enums)*
 
-        pub enum #enum_name {
-            #(#variants),*
-        }
         #ast
     })
 }
