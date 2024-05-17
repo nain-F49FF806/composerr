@@ -10,3 +10,6 @@ syn = { version = "2.0.63", features = ["full"] }
 
 [lib]
 proc-macro = true
+
+[dev-dependencies]
+thiserror = "1.0.60"

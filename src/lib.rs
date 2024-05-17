@@ -12,41 +12,10 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
 
     // Check if the input is a function, trait def or an impl block
     let (enum_name, functions) = match &mut ast {
-        Item::Trait(trait_def) => {
-            // For a trait, use the trait name as the enum name
-            let enum_name = Ident::new(
-                &(trait_def.ident.to_string() + "TraitEnum"),
-                trait_def.ident.span(),
-            );
-            let functions = extract_trait_functions(trait_def);
-            strip_trait_functions_attrs(trait_def);
-            (enum_name, functions)
-        }
-        Item::Impl(impl_block) => {
-            // For an implementation, use the type name as the enum name
-            let ident = match &*impl_block.self_ty {
-                syn::Type::Path(tp) => tp.path.segments.last().unwrap().ident.clone(),
-                _ => panic!("not supported tokens"),
-            };
-            let enum_name = Ident::new(&(ident.to_string() + "ImplEnum"), ident.span());
-            // If it's an impl trait, then abort.
-            if impl_block.trait_.is_some() {
-                panic!("Use this macro on the trait definition, not the implementation.")
-            };
-
-            let functions = extract_impl_functions(impl_block);
-            strip_impl_functions_attrs(impl_block);
-            (enum_name, functions)
-        }
-        Item::Fn(function) => {
-            // For bare function, use it's own name as the enum name
-            let capital_name = capitalize(function.sig.ident.to_string());
-            let enum_name = Ident::new(&capital_name, function.sig.span());
-            let functions = extract_bare_function(function);
-            strip_bare_function_attrs(function);
-            (enum_name, functions)
-        }
-        _ => panic!("This macro can only be used on traits or implementations."),
+        Item::Trait(trait_def) => process_trait_def(trait_def),
+        Item::Impl(impl_block) => process_impl_block(impl_block),
+        Item::Fn(function) => process_bare_function(function),
+        _ => panic!("This macro can only be used on functions, traits or implementations."),
     };
 
     // Generate the enum variants
@@ -58,8 +27,30 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         Ident::new(&capital_name, i.span())
     });
 
+    let mut enums = Vec::new();
+    for (i, error_set) in &functions {
+        let enum_name = capitalize(i.to_string()) + "Error";
+        let enum_ident = Ident::new(&enum_name, i.span());
+
+        let derive_attr = quote!(#[derive(Error, Debug)]);
+        let from_attr = quote!(#[from]);
+        let transparent_attr = quote!(#[error(transparent)]);
+
+        enums.push(quote! {
+            #derive_attr
+            pub enum #enum_ident {
+                #(
+                    #transparent_attr
+                    #error_set(#from_attr #error_set)
+                ),*
+            }
+        });
+    }
+
     // Return the generated code
     TokenStream::from(quote! {
+        #(#enums)*
+
         pub enum #enum_name {
             #(#variants),*
         }
@@ -67,21 +58,45 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     })
 }
 
-fn extract_errorset_list(attr: &Attribute) -> Vec<Ident> {
-    let mut idents = Vec::new();
-    attr.parse_nested_meta(|meta| {
-        let ident = meta
-            .path
-            .get_ident()
-            .expect("Each item must be an ident, not long path");
-        idents.push(ident.clone());
-        Ok(())
-    })
-    .expect("Failed parsing args for errorset helper attribute");
-    idents
+type FuncErrors = (Ident, Vec<Ident>);
+type ContextFuncs = (Ident, Vec<FuncErrors>);
+
+fn process_trait_def(trait_def: &mut ItemTrait) -> ContextFuncs {
+    // For a trait, use the trait name as the enum name
+    let enum_name = Ident::new(
+        &(trait_def.ident.to_string() + "TraitEnum"),
+        trait_def.ident.span(),
+    );
+    let functions = extract_trait_functions(trait_def);
+    strip_trait_functions_attrs(trait_def);
+    (enum_name, functions)
 }
 
-type FuncErrors = (Ident, Vec<Ident>);
+fn process_impl_block(impl_block: &mut ItemImpl) -> ContextFuncs {
+    // For an implementation, use the type name as the enum name
+    let ident = match &*impl_block.self_ty {
+        syn::Type::Path(tp) => tp.path.segments.last().unwrap().ident.clone(),
+        _ => panic!("not supported tokens"),
+    };
+    let enum_name = Ident::new(&(ident.to_string() + "ImplEnum"), ident.span());
+    // If it's an impl trait, then abort.
+    if impl_block.trait_.is_some() {
+        panic!("Use this macro on the trait definition, not the implementation.")
+    };
+
+    let functions = extract_impl_functions(impl_block);
+    strip_impl_functions_attrs(impl_block);
+    (enum_name, functions)
+}
+
+fn process_bare_function(function: &mut ItemFn) -> ContextFuncs {
+    // For bare function, use it's own name as the enum name
+    let capital_name = capitalize(function.sig.ident.to_string());
+    let enum_name = Ident::new(&capital_name, function.sig.span());
+    let functions = extract_bare_function(function);
+    strip_bare_function_attrs(function);
+    (enum_name, functions)
+}
 
 fn extract_trait_functions(trait_def: &ItemTrait) -> Vec<FuncErrors> {
     trait_def
@@ -109,51 +124,6 @@ fn extract_trait_functions(trait_def: &ItemTrait) -> Vec<FuncErrors> {
             (func_name, err_set)
         })
         .collect()
-}
-
-// Mutates ItemTrait in place. Removing the #[select] helper attribute
-fn strip_trait_functions_attrs(trait_def: &mut ItemTrait) {
-    let cleaned_items = trait_def
-        .items
-        .iter()
-        .map(|item| match item {
-            TraitItem::Fn(item_fn) => {
-                let mut item_fn = item_fn.clone();
-                item_fn
-                    .attrs
-                    .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
-                TraitItem::Fn(item_fn)
-            }
-            _ => item.clone(),
-        })
-        .collect();
-    trait_def.items = cleaned_items;
-}
-
-// Mutates ItemImpl in place. Removing the #[select] helper attribute
-fn strip_impl_functions_attrs(impl_block: &mut ItemImpl) {
-    let cleaned_items = impl_block
-        .items
-        .iter()
-        .map(|item| match item {
-            ImplItem::Fn(item_fn) => {
-                let mut item_fn = item_fn.clone();
-                item_fn
-                    .attrs
-                    .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
-                ImplItem::Fn(item_fn)
-            }
-            _ => item.clone(),
-        })
-        .collect();
-    impl_block.items = cleaned_items;
-}
-
-// Mutates function in place. Removing the #[select] helper attribute
-fn strip_bare_function_attrs(function: &mut ItemFn) {
-    function
-        .attrs
-        .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
 }
 
 fn extract_impl_functions(impl_block: &ItemImpl) -> Vec<FuncErrors> {
@@ -202,6 +172,65 @@ fn extract_bare_function(function: &ItemFn) -> Vec<FuncErrors> {
     } else {
         vec![]
     }
+}
+
+fn extract_errorset_list(attr: &Attribute) -> Vec<Ident> {
+    let mut idents = Vec::new();
+    attr.parse_nested_meta(|meta| {
+        let ident = meta
+            .path
+            .get_ident()
+            .expect("Each item must be an ident, not long path");
+        idents.push(ident.clone());
+        Ok(())
+    })
+    .expect("Failed parsing args for errorset helper attribute");
+    idents
+}
+
+// Mutates ItemTrait in place. Removing the #[select] helper attribute
+fn strip_trait_functions_attrs(trait_def: &mut ItemTrait) {
+    let cleaned_items = trait_def
+        .items
+        .iter()
+        .map(|item| match item {
+            TraitItem::Fn(item_fn) => {
+                let mut item_fn = item_fn.clone();
+                item_fn
+                    .attrs
+                    .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
+                TraitItem::Fn(item_fn)
+            }
+            _ => item.clone(),
+        })
+        .collect();
+    trait_def.items = cleaned_items;
+}
+
+// Mutates ItemImpl in place. Removing the #[select] helper attribute
+fn strip_impl_functions_attrs(impl_block: &mut ItemImpl) {
+    let cleaned_items = impl_block
+        .items
+        .iter()
+        .map(|item| match item {
+            ImplItem::Fn(item_fn) => {
+                let mut item_fn = item_fn.clone();
+                item_fn
+                    .attrs
+                    .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
+                ImplItem::Fn(item_fn)
+            }
+            _ => item.clone(),
+        })
+        .collect();
+    impl_block.items = cleaned_items;
+}
+
+// Mutates function in place. Removing the #[select] helper attribute
+fn strip_bare_function_attrs(function: &mut ItemFn) {
+    function
+        .attrs
+        .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
 }
 
 fn capitalize(name: impl Into<String>) -> String {

@@ -1,14 +1,18 @@
-use std::fmt::Display;
-use std::io::Error;
-
 use composerr::generate_enum;
+use std::fmt::Display;
+use std::io::Error as IOError;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+#[error("Based Error this")]
+pub struct BasedError;
 
 #[generate_enum]
 trait MyTrait {
-    #[errorset{Error, Display}]
+    #[errorset{IOError, BasedError}]
     fn function1(&self);
     fn function2(&self);
-    #[errorset[]]
+    #[errorset[IOError]]
     fn function3(&self);
 }
 
