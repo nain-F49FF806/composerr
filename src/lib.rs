@@ -45,7 +45,7 @@ pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
                             _ => Err(
                                     concat!(
                                         "This instance of ", stringify!(#enum_ident),
-                                        " is of variant different than the requested ", stringify!(#error_set)
+                                        " is of a variant different than the requested ", stringify!(#error_set)
                                     ).to_string()
                                 ),
                         }
