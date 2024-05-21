@@ -6,7 +6,7 @@ use syn::{
 };
 
 #[proc_macro_attribute]
-pub fn generate_enum(_attrs: TokenStream, input: TokenStream) -> TokenStream {
+pub fn compose_errors(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     // Parse the input into a syntax tree
     let mut ast = parse_macro_input!(input as syn::Item);
 

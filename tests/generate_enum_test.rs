@@ -1,13 +1,7 @@
-use composerr::generate_enum;
-use std::fmt::{Display, Error};
-use std::io::Error as IOError;
-use thiserror::Error;
+use composerr::compose_errors;
+use std::fmt::Display;
 
-#[derive(Error, Debug)]
-#[error("Based Error this")]
-pub struct BasedError;
-
-#[generate_enum]
+#[compose_errors]
 trait MyTrait {
     #[errorset{IOError, BasedError}]
     fn function1(&self);
@@ -18,7 +12,7 @@ trait MyTrait {
 
 struct Dummy;
 
-#[generate_enum]
+#[compose_errors]
 impl Dummy {
     fn function4(&self) {}
     #[errorset{}]
@@ -35,7 +29,7 @@ mod foo {
     pub struct Dummy2;
 }
 
-#[generate_enum]
+#[compose_errors]
 impl foo::Dummy2 {
     fn function6(&self) {}
     #[errorset(IOError)]
@@ -44,12 +38,19 @@ impl foo::Dummy2 {
     }
 }
 
-#[test]
-#[generate_enum]
+use std::io::Error as IOError;
+
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+#[error("Based Error this")]
+pub struct BasedError;
+
+#[compose_errors]
 #[errorset(IOError, BasedError)]
-fn main() -> Result<(), ()> {
+fn main() -> Result<(), _> {
     // This is just a placeholder to compile the program.
-    // The real test is in the generated enum.
+    // See the right side for the generated components.
 
     let _err: MainError = BasedError.into();
 
