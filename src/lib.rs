@@ -96,7 +96,7 @@ fn process_impl_block(impl_block: &mut ItemImpl) -> ContextFuncs {
 
 fn process_bare_function(function: &mut ItemFn) -> ContextFuncs {
     // For bare function, use it's own name as the scope name
-    let capital_name = capitalize(function.sig.ident.to_string());
+    let capital_name = snake_to_pascal(&function.sig.ident.to_string());
     let enum_name = Ident::new(&capital_name, function.sig.span());
     let functions = extract_bare_function(function);
     strip_bare_function_attrs(function);
@@ -279,16 +279,29 @@ fn replace_func_output(return_type: &mut ReturnType, composed_error_ident: &Iden
 
 //
 fn name_composed_error(function_ident: &Ident) -> Ident {
-    let name = capitalize(function_ident.to_string()) + "Error";
+    let name = snake_to_pascal(&function_ident.to_string()) + "Error";
     Ident::new(&name, function_ident.span())
 }
 
-fn capitalize(name: impl Into<String>) -> String {
-    let name: String = name.into();
-    name.chars()
-        .next()
-        .unwrap_or_default()
-        .to_uppercase()
-        .collect::<String>()
-        + &name[1..]
+fn snake_to_pascal(snake_case: &str) -> String {
+    // Split the snake_case string into words
+    let words: Vec<&str> = snake_case.split('_').collect();
+
+    // Convert each word to PascalCase
+    let pascal_words: Vec<String> = words
+        .into_iter()
+        .map(|word| {
+            if word.is_empty() {
+                return String::new();
+            }
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => format!("{}", first.to_ascii_uppercase()) + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect();
+
+    // Join the words back together without any separators
+    pascal_words.join("")
 }
