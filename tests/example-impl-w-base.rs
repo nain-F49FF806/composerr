@@ -37,3 +37,10 @@ impl Foo {
         Ok("Am ok".to_owned())
     }
 }
+
+#[test]
+fn impl_func_expected_error_name() {
+    let foo = Foo;
+    // match error name in returned result type
+    let res: Result<_, FooImplFunction5Error> = foo.function5();
+}

@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, parse_quote, spanned::Spanned, Attribute, GenericArgument, Ident, ImplItem,
-    Item, ItemFn, ItemImpl, ItemTrait, PathArguments, ReturnType, TraitItem, Type,
+    parse_macro_input, parse_quote, Attribute, GenericArgument, Ident, ImplItem, Item, ItemFn,
+    ItemImpl, ItemTrait, PathArguments, ReturnType, TraitItem, Type,
 };
 
 #[proc_macro_attribute]
@@ -11,7 +11,7 @@ pub fn compose_errors(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     let mut ast = parse_macro_input!(input as syn::Item);
 
     // Check if the input is a function, trait def or an impl block
-    let (_input_scope, functions) = match &mut ast {
+    let (input_scope, functions) = match &mut ast {
         Item::Trait(trait_def) => process_trait_def(trait_def),
         Item::Impl(impl_block) => process_impl_block(impl_block),
         Item::Fn(function) => process_bare_function(function),
@@ -20,7 +20,7 @@ pub fn compose_errors(_attrs: TokenStream, input: TokenStream) -> TokenStream {
 
     let mut enums = Vec::new();
     for (i, error_set) in &functions {
-        let enum_ident = name_composed_error(i);
+        let enum_ident = name_composed_error(i, &input_scope);
 
         let derive_attr = quote!(#[derive(thiserror::Error, Debug)]);
         let from_attr = quote!(#[from]);
@@ -64,43 +64,39 @@ pub fn compose_errors(_attrs: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 type FuncErrors = (Ident, Vec<Ident>);
-type ContextFuncs = (Ident, Vec<FuncErrors>);
+type ScopeFuncs = (String, Vec<FuncErrors>);
 
-fn process_trait_def(trait_def: &mut ItemTrait) -> ContextFuncs {
+fn process_trait_def(trait_def: &mut ItemTrait) -> ScopeFuncs {
     // For a trait, use the trait name as the enum name
-    let enum_name = Ident::new(
-        &(trait_def.ident.to_string() + "TraitEnum"),
-        trait_def.ident.span(),
-    );
+    let scope_name = trait_def.ident.to_string() + "Trait";
     let functions = extract_trait_functions(trait_def);
-    strip_trait_functions_attrs(trait_def);
-    (enum_name, functions)
+    strip_trait_functions_attrs(trait_def, &scope_name);
+    (scope_name, functions)
 }
 
-fn process_impl_block(impl_block: &mut ItemImpl) -> ContextFuncs {
+fn process_impl_block(impl_block: &mut ItemImpl) -> ScopeFuncs {
     // For an implementation, use the type name as the enum name
     let ident = match &*impl_block.self_ty {
         syn::Type::Path(tp) => tp.path.segments.last().unwrap().ident.clone(),
         _ => panic!("not supported tokens"),
     };
-    let enum_name = Ident::new(&(ident.to_string() + "ImplEnum"), ident.span());
+    let scope_name = ident.to_string() + "Impl";
     // If it's an impl trait, then abort.
     if impl_block.trait_.is_some() {
         panic!("Use this macro on the trait definition, not the implementation.")
     };
 
     let functions = extract_impl_functions(impl_block);
-    strip_impl_functions_attrs(impl_block);
-    (enum_name, functions)
+    strip_impl_functions_attrs(impl_block, &scope_name);
+    (scope_name, functions)
 }
 
-fn process_bare_function(function: &mut ItemFn) -> ContextFuncs {
+fn process_bare_function(function: &mut ItemFn) -> ScopeFuncs {
     // For bare function, use it's own name as the scope name
-    let capital_name = snake_to_pascal(&function.sig.ident.to_string());
-    let enum_name = Ident::new(&capital_name, function.sig.span());
+    let scope_name = "".to_owned();
     let functions = extract_bare_function(function);
-    strip_bare_function_attrs(function);
-    (enum_name, functions)
+    strip_bare_function_attrs(function, "");
+    (scope_name, functions)
 }
 
 fn extract_trait_functions(trait_def: &ItemTrait) -> Vec<FuncErrors> {
@@ -195,7 +191,7 @@ fn extract_errorset_list(attr: &Attribute) -> Vec<Ident> {
 
 // Mutates ItemTrait in place. Removing the #[errorset] helper attribute
 // Also changes the return Result type, installing the custom composed error.
-fn strip_trait_functions_attrs(trait_def: &mut ItemTrait) {
+fn strip_trait_functions_attrs(trait_def: &mut ItemTrait, scope_name: &str) {
     let cleaned_items = trait_def
         .items
         .iter()
@@ -204,7 +200,7 @@ fn strip_trait_functions_attrs(trait_def: &mut ItemTrait) {
                 let mut item_fn = item_fn.clone();
                 replace_func_output(
                     &mut item_fn.sig.output,
-                    &name_composed_error(&item_fn.sig.ident),
+                    &name_composed_error(&item_fn.sig.ident, scope_name),
                 );
                 item_fn
                     .attrs
@@ -219,7 +215,7 @@ fn strip_trait_functions_attrs(trait_def: &mut ItemTrait) {
 
 // Mutates ItemImpl in place. Removing the #[errorset] helper attribute
 // Also changes the return Result type, installing the custom composed error.
-fn strip_impl_functions_attrs(impl_block: &mut ItemImpl) {
+fn strip_impl_functions_attrs(impl_block: &mut ItemImpl, scope_name: &str) {
     let cleaned_items = impl_block
         .items
         .iter()
@@ -228,7 +224,7 @@ fn strip_impl_functions_attrs(impl_block: &mut ItemImpl) {
                 let mut item_fn = item_fn.clone();
                 replace_func_output(
                     &mut item_fn.sig.output,
-                    &name_composed_error(&item_fn.sig.ident),
+                    &name_composed_error(&item_fn.sig.ident, scope_name),
                 );
                 item_fn
                     .attrs
@@ -243,10 +239,10 @@ fn strip_impl_functions_attrs(impl_block: &mut ItemImpl) {
 
 // Mutates function in place. Removing the #[errorset] helper attribute
 // Also changes the return Result type, installing the custom composed error.
-fn strip_bare_function_attrs(function: &mut ItemFn) {
+fn strip_bare_function_attrs(function: &mut ItemFn, scope_name: &str) {
     replace_func_output(
         &mut function.sig.output,
-        &name_composed_error(&function.sig.ident),
+        &name_composed_error(&function.sig.ident, scope_name),
     );
     function
         .attrs
@@ -282,8 +278,13 @@ fn replace_func_output(return_type: &mut ReturnType, composed_error_ident: &Iden
 }
 
 //
-fn name_composed_error(function_ident: &Ident) -> Ident {
-    let name = snake_to_pascal(&function_ident.to_string()) + "Error";
+fn name_composed_error(function_ident: &Ident, prefix: &str) -> Ident {
+    let name = format!(
+        "{}{}{}",
+        snake_to_pascal(prefix),
+        snake_to_pascal(&function_ident.to_string()),
+        "Error"
+    );
     Ident::new(&name, function_ident.span())
 }
 
