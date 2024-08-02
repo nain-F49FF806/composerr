@@ -25,6 +25,12 @@ impl Display for Dummy {
     }
 }
 
+impl MyTrait for Dummy {
+    fn function1(&self) {}
+    fn function2(&self) {}
+    fn function3(&self) {}
+}
+
 mod foo {
     pub struct Dummy2;
 }
@@ -61,4 +67,23 @@ fn main() -> Result<(), _> {
     let _ioerr: IOError = err.try_into().expect("This will fail");
 
     Ok(())
+}
+
+#[test]
+fn test_conversion_succeeds() {
+    let based = BasedError;
+    let _main_err: MainError = based.into();
+}
+
+#[test]
+fn test_correct_reverse_conversion_succeeds() {
+    let main_err = MainError::BasedError(BasedError);
+    let _based: BasedError = main_err.try_into().unwrap();
+}
+
+#[test]
+#[should_panic(expected = "This conversion will fail")]
+fn test_incorrect_reverse_conversion_fails() {
+    let main_err = MainError::BasedError(BasedError);
+    let _ioerr: IOError = main_err.try_into().expect("This conversion will fail");
 }

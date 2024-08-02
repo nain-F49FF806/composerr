@@ -21,8 +21,12 @@ fn moody_task_do() -> Result<(), _> {
     Ok(())
 }
 
+#[test]
 fn main() {
     let res: Result<(), MoodyTaskDoError> = moody_task_do();
+    if res.is_ok() {
+        return;
+    }
     match res.unwrap_err() {
         MoodyTaskDoError::IoError(e) => println!("an io error {}", e),
         MoodyTaskDoError::FmtError(e) => println!("a formatting error {}", e),
