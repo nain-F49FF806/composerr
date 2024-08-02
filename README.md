@@ -78,7 +78,6 @@ How about.. if it's very easy?
 use composerr::compose_errors;
 use rand::Rng;
 use std::{fmt::Error as FmtError, io::Error as IoError};
-use thiserror::Error;
 
 #[compose_errors]
 #[errorset(IoError, FmtError)]  // <-- This easy!

@@ -1,5 +1,4 @@
 use composerr::compose_errors;
-use thiserror::Error;
 
 // Custom errors defined with thiserror
 
