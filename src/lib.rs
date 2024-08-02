@@ -198,10 +198,16 @@ fn strip_trait_functions_attrs(trait_def: &mut ItemTrait, scope_name: &str) {
         .map(|item| match item {
             TraitItem::Fn(item_fn) => {
                 let mut item_fn = item_fn.clone();
-                replace_func_output(
-                    &mut item_fn.sig.output,
-                    &name_composed_error(&item_fn.sig.ident, scope_name),
-                );
+                if item_fn
+                    .attrs
+                    .iter()
+                    .any(|attr| attr.path().get_ident().unwrap() == "errorset")
+                {
+                    replace_func_output(
+                        &mut item_fn.sig.output,
+                        &name_composed_error(&item_fn.sig.ident, scope_name),
+                    );
+                }
                 item_fn
                     .attrs
                     .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
@@ -222,10 +228,16 @@ fn strip_impl_functions_attrs(impl_block: &mut ItemImpl, scope_name: &str) {
         .map(|item| match item {
             ImplItem::Fn(item_fn) => {
                 let mut item_fn = item_fn.clone();
-                replace_func_output(
-                    &mut item_fn.sig.output,
-                    &name_composed_error(&item_fn.sig.ident, scope_name),
-                );
+                if item_fn
+                    .attrs
+                    .iter()
+                    .any(|attr| attr.path().segments.last().unwrap().ident == "errorset")
+                {
+                    replace_func_output(
+                        &mut item_fn.sig.output,
+                        &name_composed_error(&item_fn.sig.ident, scope_name),
+                    );
+                }
                 item_fn
                     .attrs
                     .retain(|attr| attr.path().segments.last().unwrap().ident != "errorset");
