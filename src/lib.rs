@@ -269,7 +269,11 @@ fn replace_func_output(return_type: &mut ReturnType, composed_error_ident: &Iden
                     // Result <T, E>
                     if args.len() == 2 {
                         let composed_error_type: Type = parse_quote!(#composed_error_ident);
-                        args[1] = GenericArgument::Type(composed_error_type);
+                        // Check if the second argument is a generic argument of type inference
+                        if let GenericArgument::Type(Type::Infer(_)) = &args[1] {
+                            // Replace the inferred type with the composed error type
+                            args[1] = GenericArgument::Type(composed_error_type.clone());
+                        }
                     }
                 }
             }
