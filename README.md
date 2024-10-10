@@ -2,10 +2,15 @@
 
 Why write bespoke error enums, when you can compose!
 
+
+> [!TIP]
+> If you'd like to see a demo first, jump to [demo section](#demo),  
+> else continue to [about section](#about) to understand what exactly composerr solves. 
+
 ## About
 
-Many rust libraries have a single large error enum. With error variants being *all* the different failure modes *of the library*.  
-Sometimes this is can dilute locally relevant information.
+Many rust libraries have a single large error enum. With error variants being *all* different failure modes *of the library*.  
+Sometimes this is can dilute locally relevant (contextual) information.
 
 For example consider the error enum of the wonderful sqlx library, [`sqlx::Error`](https://docs.rs/sqlx/latest/sqlx/error/enum.Error.html).
 
@@ -44,7 +49,7 @@ pub enum Error {
 
 `sqlx::Error` has a total of 16 variants.  Including disparate error variants such as `Configuration`, `Tls`, `RowNotFound`, `ColumnDecode` etc.
 
-Not every function emits errors in all the different variant modes of this enum. But may error to only a subset of them.  
+Not every function can emits errors in all the different variant of this enum. Most will error to only a subset.  
 For example, when executing a query
 
 ```rust
@@ -57,22 +62,28 @@ let row: (i64,) = sqlx::query_as("SELECT $1")
 Given that the result type of `fetch_one` is `Result<O, sqlx::Error>`, say we want to handle the error,
 
 - What might be the returned error variant?
-- Are all of 16 enum variants equally likely and need to be handled?
+- Are all 16 enum variants equally likely and need to be handled individually?
 
 Thankfully, documentation for this function, has a little helpful note
 
 > Execute the query, returning the first row or Error::RowNotFound otherwise.
 
-That's good. But this kind of information could be available at the type level itself.
-Also, `Error::RowNotFound` is a variant that probably does not happen in most other scenarios.
-Like when setting up the database connection. So we are carrying it around unnecessarily and could do with a smaller error enum elsewhere.
+Documentation is good. But this kind of information could be available at the _type level_ itself.  
+Also observe that variant`Error::RowNotFound` probably does not happen in most other scenarios.
+Like say when setting up the database connection. 
 
-You might be thinking. Oh so are you suggesting we write custom, more specific error enums for each function?
-That seems like a chore. Too much...
+So we are carrying it (and many other specific variants) to other functions unnecessarily. 
+Where could make do with smaller, more context specific error enums.
 
-How about.. if it's very easy?
+You might be thinking. Oh, so are you suggesting we write customised, more specific error enums for each function?
+And then, what about all ensuing error transformations? That seems like a great chore. Too much, no?
+
+How about.. if we make it very easy?
 
 ## Demo
+
+This `moody_task_do` function does a cool task, if in the right mood. Otherwise, it can err in various ways.  
+Notice how we simply declare the expected errors at the function definition site. It's that easy. 
 
 ```rust
 use composerr::compose_errors;
@@ -113,6 +124,7 @@ fn main() {
 Basically, we are doing error compositions.
 You can define your individual base errors anyway you like.
 The only requirement is that they implement the `std::error::Error` trait.
+Here we have used `io::Error` and `fmt::Error` from the standard library for succintness.
 
 Then for each function that you want to provide precise error information for. Just declare the `errorset`.  
 Leave the return Error type as inferred ( `_` ) so the macro can replace it with the composed error enum.
@@ -177,8 +189,8 @@ mod my_base_errors {
         MissingFields(Vec<String>),
     }
 }
-use my_base_errors::*;
 
+use my_base_errors::*;
 
 pub struct Foo;
 
