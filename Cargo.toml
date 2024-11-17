@@ -12,5 +12,4 @@ syn = { version = "2.0", features = ["full"] }
 proc-macro = true
 
 [dev-dependencies]
-thiserror = "1.0"
 rand = "0.8.5"

@@ -22,7 +22,7 @@ pub fn compose_errors(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     for (i, error_set) in &functions {
         let enum_ident = name_composed_error(i, &input_scope);
 
-        let derive_attr = quote!(#[derive(thiserror::Error, Debug)]);
+        let derive_attr = quote!(#[derive(compounderr:thiserror::Error, Debug)]);
         let from_attr = quote!(#[from]);
         let transparent_attr = quote!(#[error(transparent)]);
 
